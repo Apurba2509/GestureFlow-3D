@@ -101,15 +101,13 @@ export const useHandTracking = (
              rightGrip = calculateGrip(results.landmarks[1]);
 
              // Position (Center between hands)
-             // Normalize to -1 to 1. Note: MediaPipe x is 0-1 (left-right), y is 0-1 (top-bottom)
-             // We flip X for mirror effect usually, but let's assume standard
-             // Convert to: x: -1 (left) to 1 (right), y: 1 (top) to -1 (bottom) for 3D world mapping
              const avgX = (hand1.x + hand2.x) / 2;
              const avgY = (hand1.y + hand2.y) / 2;
              
-             // Mirror X: (1 - x)
+             // Removed (1 - avgX) inversion to fix negative camera feed issue.
+             // Now calculating directly: (0 to 1) -> (-1 to 1)
              position = {
-                 x: (1 - avgX) * 2 - 1,
+                 x: avgX * 2 - 1,
                  y: -(avgY * 2 - 1)
              };
 
@@ -121,8 +119,9 @@ export const useHandTracking = (
              rightGrip = leftGrip;
              distance = 0.5;
              
+             // Removed (1 - hand.x) inversion
              position = {
-                 x: (1 - hand.x) * 2 - 1,
+                 x: hand.x * 2 - 1,
                  y: -(hand.y * 2 - 1)
              };
           }

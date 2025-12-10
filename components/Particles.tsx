@@ -105,8 +105,9 @@ export const Particles: React.FC<ParticlesProps> = ({ shapeType, color, handRef 
     // Physics parameters
     const smoothing = (3.0 + (tension * 12.0)) * delta;
     
-    const repulsionRadius = 3.0;
-    const repulsionStrength = 20.0 * delta;
+    // Increased Impact Settings
+    const repulsionRadius = 6.0; // Increased from 3.0
+    const repulsionStrength = 60.0 * delta; // Increased from 20.0
     
     const positions = pointsRef.current.geometry.attributes.position.array as Float32Array;
     const time = state.clock.elapsedTime;
@@ -158,13 +159,15 @@ export const Particles: React.FC<ParticlesProps> = ({ shapeType, color, handRef 
       let cz = currentPositions[i3 + 2];
 
       // 6. Repulsion Logic (Hand movement)
-      if (isDetected && handSpeed > 3.0) { 
+      // Lowered threshold from 3.0 to 1.5 to make it easier to trigger
+      if (isDetected && handSpeed > 1.5) { 
         const dx = cx - handWorldX;
         const dy = cy - handWorldY;
         const distSq = dx*dx + dy*dy;
         
         if (distSq < repulsionRadius * repulsionRadius) {
             const dist = Math.sqrt(distSq);
+            // Stronger force calculation
             const force = (1.0 - dist / repulsionRadius) * repulsionStrength;
             cx += (dx / dist) * force;
             cy += (dy / dist) * force;
