@@ -48,7 +48,7 @@ const App: React.FC = () => {
 
       {/* 3D Scene */}
       <Canvas 
-        camera={{ position: [0, 0, 8], fov: 45 }} 
+        camera={{ position: [0, 0, 14], fov: 45 }} 
         dpr={[1, 2]}
         gl={{ 
           preserveDrawingBuffer: true, // Required for trails

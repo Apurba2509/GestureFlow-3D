@@ -30,8 +30,34 @@ export const Particles: React.FC<ParticlesProps> = ({ shapeType, color, handRef 
     return arr;
   }, []);
 
+  // Generate a soft circular texture for the particles
+  const particleTexture = useMemo(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 32;
+    canvas.height = 32;
+    const context = canvas.getContext('2d');
+    if (context) {
+      // Create a gradient for a soft glow effect
+      const gradient = context.createRadialGradient(16, 16, 0, 16, 16, 16);
+      gradient.addColorStop(0, 'rgba(255,255,255,1)');
+      gradient.addColorStop(0.5, 'rgba(255,255,255,0.8)');
+      gradient.addColorStop(1, 'rgba(255,255,255,0)');
+      
+      context.fillStyle = gradient;
+      context.fillRect(0, 0, 32, 32);
+    }
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.premultiplyAlpha = true; // Helps with blending artifacts
+    return texture;
+  }, []);
+
   // Track previous hand position to calculate velocity
   const prevHandPos = useRef<{x: number, y: number, isTracking: boolean}>({ x: 0, y: 0, isTracking: false });
+
+  // Persistent Zoom State
+  // We initialize to 1.0 (default scale). 
+  // This ref holds the value even when hands are removed.
+  const persistentZoom = useRef(1.0);
 
   useFrame((state, delta) => {
     if (!pointsRef.current) return;
@@ -54,21 +80,27 @@ export const Particles: React.FC<ParticlesProps> = ({ shapeType, color, handRef 
         handSpeed = delta > 0.001 ? Math.sqrt(handDx*handDx + handDy*handDy) / delta : 0;
         prevHandPos.current = { x: handWorldX, y: handWorldY, isTracking: true };
       }
+
+      // Update Zoom Persistence ONLY when hands are detected
+      // Target scale calculation: 0.4 (min) + distance * 2.6
+      const targetZoom = 0.4 + (distance * 2.6);
+      // Smooth lerp to new zoom level
+      persistentZoom.current += (targetZoom - persistentZoom.current) * 0.1;
+
     } else {
       prevHandPos.current.isTracking = false;
+      // When not detected, we DO NOT change persistentZoom.current.
+      // It stays at the last calculated value.
     }
 
     // Interaction Parameters
-    // Shrink: Controls the scale of the shape based on hand distance
-    const expansionFactor = isDetected ? 0.4 + (distance * 2.6) : 1.0; 
+    const expansionFactor = persistentZoom.current;
     
     // Focus (Grip): Controls the tightness and energy of particles
     // 0 = Relaxed, 1 = Focused/Tense
     const tension = isDetected ? avgGrip : 0; 
     
     // Physics parameters
-    // Base smoothing: 3.0. 
-    // When tensed (Focus), smoothing increases drastically (up to 15.0), making particles snap to position.
     const smoothing = (3.0 + (tension * 12.0)) * delta;
     
     const repulsionRadius = 3.0;
@@ -86,8 +118,9 @@ export const Particles: React.FC<ParticlesProps> = ({ shapeType, color, handRef 
         pointsRef.current.material.color.lerp(baseColor, 0.1);
         
         // Dynamic Size
-        // Relaxed: 0.02, Focused: 0.035 (Bigger = more intense)
-        const targetSize = 0.02 + (tension * 0.015);
+        // Increased base size to account for soft texture
+        // Relaxed: 0.05, Focused: 0.08
+        const targetSize = 0.05 + (tension * 0.03);
         pointsRef.current.material.size += (targetSize - pointsRef.current.material.size) * 0.1;
     }
 
@@ -99,13 +132,12 @@ export const Particles: React.FC<ParticlesProps> = ({ shapeType, color, handRef 
       let ty = targetPositions[i3 + 1];
       let tz = targetPositions[i3 + 2];
 
-      // 2. Apply Expansion (Hand Distance) - "Shrink"
+      // 2. Apply Expansion (Persistent Zoom)
       tx *= expansionFactor;
       ty *= expansionFactor;
       tz *= expansionFactor;
 
       // 3. Apply Breathing/Idling
-      // Focus reduces breathing amplitude (particles stop drifting and lock on)
       const breathingAmplitude = (1.0 - tension) * 0.15; 
       const breathe = Math.sin(time * 1.5 + randomOffsets[i]) * breathingAmplitude;
       tx += tx * breathe;
@@ -113,12 +145,7 @@ export const Particles: React.FC<ParticlesProps> = ({ shapeType, color, handRef 
       tz += tz * breathe;
 
       // 4. Focus Effect (Grip)
-      // Removed random noise. 
-      // Instead, we just rely on the increased smoothing (Spring Force) defined above
-      // to create the "Snap" effect. 
-      // We can also add a slight vibration for high energy if desired, but locking tight is cleaner.
       if (tension > 0.8) {
-         // Tiny vibration at max tension
          tx += (Math.random() - 0.5) * 0.05;
          ty += (Math.random() - 0.5) * 0.05;
          tz += (Math.random() - 0.5) * 0.05;
@@ -159,7 +186,6 @@ export const Particles: React.FC<ParticlesProps> = ({ shapeType, color, handRef 
     }
 
     pointsRef.current.geometry.attributes.position.needsUpdate = true;
-    // Rotation speed increases with tension (High Energy)
     pointsRef.current.rotation.y += delta * (0.05 + tension * 0.2);
   });
 
@@ -173,12 +199,15 @@ export const Particles: React.FC<ParticlesProps> = ({ shapeType, color, handRef 
           itemSize={3}
         />
       </bufferGeometry>
+      {/* Updated material with texture and adjusted size */}
       <pointsMaterial
         attach="material"
-        size={0.02}
+        map={particleTexture}
+        size={0.05} // Increased size for visibility
         sizeAttenuation={true}
         color={color}
-        transparent
+        transparent={true}
+        alphaTest={0.01} // Helps discard fully transparent pixels
         opacity={0.9}
         blending={THREE.AdditiveBlending}
         depthWrite={false}
