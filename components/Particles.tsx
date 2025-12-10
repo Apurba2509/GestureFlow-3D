@@ -11,18 +11,38 @@ interface ParticlesProps {
   handRef: React.MutableRefObject<HandMetrics>;
 }
 
+// Spatial Grid Configuration
+const GRID_SIZE = 30; // World units (-15 to +15)
+const GRID_RES = 15; // Resolution (cells per axis)
+const GRID_CELL_SIZE = GRID_SIZE / GRID_RES;
+const GRID_HALF = GRID_SIZE / 2;
+const GRID_TOTAL_CELLS = GRID_RES * GRID_RES * GRID_RES;
+const MAX_COLLISION_CHECKS = 8; // Performance cap per particle
+
 export const Particles: React.FC<ParticlesProps> = ({ shapeType, color, handRef }) => {
   const pointsRef = useRef<THREE.Points>(null);
   const { viewport } = useThree();
   
-  // Store target positions (the shape) and current positions
+  // Store target positions (the shape)
   const targetPositions = useMemo(() => generateShapePositions(shapeType, PARTICLE_COUNT), [shapeType]);
   
-  // Initialize current positions array
+  // Initialize current positions array with random spread to prevent initial explosion
   const currentPositions = useMemo(() => {
-    return new Float32Array(PARTICLE_COUNT * 3);
+    const arr = new Float32Array(PARTICLE_COUNT * 3);
+    for(let i = 0; i < arr.length; i++) {
+        arr[i] = (Math.random() - 0.5) * 20;
+    }
+    return arr;
   }, []);
   
+  // Spatial Grid Arrays (Linked List approach)
+  // gridHead stores the index of the first particle in each cell
+  // gridNext stores the index of the next particle in the same cell
+  const { gridHead, gridNext } = useMemo(() => ({
+    gridHead: new Int32Array(GRID_TOTAL_CELLS),
+    gridNext: new Int32Array(PARTICLE_COUNT)
+  }), []);
+
   // Initialize random offsets for breathing effect
   const randomOffsets = useMemo(() => {
     const arr = new Float32Array(PARTICLE_COUNT);
@@ -37,27 +57,21 @@ export const Particles: React.FC<ParticlesProps> = ({ shapeType, color, handRef 
     canvas.height = 32;
     const context = canvas.getContext('2d');
     if (context) {
-      // Create a gradient for a soft glow effect
       const gradient = context.createRadialGradient(16, 16, 0, 16, 16, 16);
       gradient.addColorStop(0, 'rgba(255,255,255,1)');
       gradient.addColorStop(0.5, 'rgba(255,255,255,0.8)');
       gradient.addColorStop(1, 'rgba(255,255,255,0)');
-      
       context.fillStyle = gradient;
       context.fillRect(0, 0, 32, 32);
     }
     const texture = new THREE.CanvasTexture(canvas);
-    texture.premultiplyAlpha = true; // Helps with blending artifacts
+    texture.premultiplyAlpha = true; 
     return texture;
   }, []);
 
   // Track previous hand position to calculate velocity
   const prevHandPos = useRef<{x: number, y: number, isTracking: boolean}>({ x: 0, y: 0, isTracking: false });
-  
-  // Smoothed position for visual stability
   const smoothedHandPos = useRef<{x: number, y: number}>({ x: 0, y: 0 });
-
-  // Persistent Zoom State
   const persistentZoom = useRef(1.0);
 
   useFrame((state, delta) => {
@@ -65,32 +79,25 @@ export const Particles: React.FC<ParticlesProps> = ({ shapeType, color, handRef 
 
     const { distance, avgGrip, isDetected, position: handScreenPos } = handRef.current;
     
-    // Map normalized hand position (-1 to 1) to world space
+    // --- Hand Tracking Logic ---
     const targetHandX = handScreenPos.x * (viewport.width / 2);
     const targetHandY = handScreenPos.y * (viewport.height / 2);
 
-    // Smooth Hand Position Logic
     if (isDetected) {
        if (!prevHandPos.current.isTracking) {
-           // First frame detected: snap to position to avoid flying in
            smoothedHandPos.current.x = targetHandX;
            smoothedHandPos.current.y = targetHandY;
        } else {
-           // Subsequent frames: Lerp for smoothness
-           // Use a fixed lerp factor scaled by delta roughly, or simple coefficient
-           const lerpFactor = Math.min(1.0, 10.0 * delta); // Adjust 10.0 for speed/smoothness tradeoff
+           const lerpFactor = Math.min(1.0, 10.0 * delta);
            smoothedHandPos.current.x += (targetHandX - smoothedHandPos.current.x) * lerpFactor;
            smoothedHandPos.current.y += (targetHandY - smoothedHandPos.current.y) * lerpFactor;
        }
     }
-    // If !isDetected, we DO NOT update smoothedHandPos. It stays at the last known position.
 
     const handWorldX = smoothedHandPos.current.x;
     const handWorldY = smoothedHandPos.current.y;
-
     let handSpeed = 0;
 
-    // Calculate Hand Velocity based on Smoothed Position
     if (isDetected) {
       if (!prevHandPos.current.isTracking) {
         prevHandPos.current = { x: handWorldX, y: handWorldY, isTracking: true };
@@ -100,85 +107,92 @@ export const Particles: React.FC<ParticlesProps> = ({ shapeType, color, handRef 
         handSpeed = delta > 0.001 ? Math.sqrt(handDx*handDx + handDy*handDy) / delta : 0;
         prevHandPos.current = { x: handWorldX, y: handWorldY, isTracking: true };
       }
-
-      // Update Zoom Persistence
       const targetZoom = 0.4 + (distance * 2.6);
       persistentZoom.current += (targetZoom - persistentZoom.current) * 0.1;
-
     } else {
       prevHandPos.current.isTracking = false;
     }
 
-    // Interaction Parameters
     const expansionFactor = persistentZoom.current;
-    
-    // Focus (Grip)
     const tension = isDetected ? avgGrip : 0; 
-    
-    // Physics parameters
     const smoothing = (3.0 + (tension * 12.0)) * delta;
-    
-    // Increased Impact Settings
     const repulsionRadius = 6.0; 
     const repulsionStrength = 60.0 * delta; 
     
     const positions = pointsRef.current.geometry.attributes.position.array as Float32Array;
     const time = state.clock.elapsedTime;
 
-    // Dynamic Material Color
+    // Update Material
     if (pointsRef.current.material instanceof THREE.PointsMaterial) {
         const baseColor = new THREE.Color(color);
         const focusColor = new THREE.Color('#ffffff'); 
         baseColor.lerp(focusColor, tension * 0.7);
         pointsRef.current.material.color.lerp(baseColor, 0.1);
-        
         const targetSize = 0.05 + (tension * 0.03);
         pointsRef.current.material.size += (targetSize - pointsRef.current.material.size) * 0.1;
     }
 
+    // --- Step 1: Build Spatial Grid ---
+    // Reset Grid Head
+    gridHead.fill(-1);
+
+    // Populate Grid
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+        const i3 = i * 3;
+        const px = currentPositions[i3];
+        const py = currentPositions[i3+1];
+        const pz = currentPositions[i3+2];
+        
+        let gx = Math.floor((px + GRID_HALF) / GRID_CELL_SIZE);
+        let gy = Math.floor((py + GRID_HALF) / GRID_CELL_SIZE);
+        let gz = Math.floor((pz + GRID_HALF) / GRID_CELL_SIZE);
+        
+        // Clamp to grid
+        if (gx < 0) gx = 0; else if (gx >= GRID_RES) gx = GRID_RES - 1;
+        if (gy < 0) gy = 0; else if (gy >= GRID_RES) gy = GRID_RES - 1;
+        if (gz < 0) gz = 0; else if (gz >= GRID_RES) gz = GRID_RES - 1;
+        
+        const cellIdx = gx + gy * GRID_RES + gz * GRID_RES * GRID_RES;
+        gridNext[i] = gridHead[cellIdx];
+        gridHead[cellIdx] = i;
+    }
+
+    // --- Step 2: Update Particles & Collide ---
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       const i3 = i * 3;
       
-      // 1. Calculate Shape Target
+      let cx = currentPositions[i3];
+      let cy = currentPositions[i3 + 1];
+      let cz = currentPositions[i3 + 2];
+      
       let tx = targetPositions[i3];
       let ty = targetPositions[i3 + 1];
       let tz = targetPositions[i3 + 2];
 
-      // 2. Apply Expansion
+      // Expansion
       tx *= expansionFactor;
       ty *= expansionFactor;
       tz *= expansionFactor;
 
-      // 3. Apply Breathing
+      // Breathing
       const breathingAmplitude = (1.0 - tension) * 0.15; 
       const breathe = Math.sin(time * 1.5 + randomOffsets[i]) * breathingAmplitude;
       tx += tx * breathe;
       ty += ty * breathe;
       tz += tz * breathe;
 
-      // 4. Focus Effect
+      // Focus Jitter
       if (tension > 0.8) {
          tx += (Math.random() - 0.5) * 0.05;
          ty += (Math.random() - 0.5) * 0.05;
          tz += (Math.random() - 0.5) * 0.05;
       }
 
-      // 5. Physics: Current State
-      let cx = currentPositions[i3];
-      let cy = currentPositions[i3 + 1];
-      let cz = currentPositions[i3 + 2];
-
-      // 6. Repulsion Logic
-      // Note: We use isDetected check here because if hand is gone, we don't want to repel.
-      // However, we use SMOOTHED positions.
-      // If user wants effect to 'persist' exactly as is, we would need to fake velocity.
-      // But typically, if hand stops (or is removed), repulsion should stop.
-      // The user issue "goes to default state" usually refers to camera rotation or zoom resetting.
+      // Hand Repulsion
       if (isDetected && handSpeed > 1.5) { 
         const dx = cx - handWorldX;
         const dy = cy - handWorldY;
         const distSq = dx*dx + dy*dy;
-        
         if (distSq < repulsionRadius * repulsionRadius) {
             const dist = Math.sqrt(distSq);
             const force = (1.0 - dist / repulsionRadius) * repulsionStrength;
@@ -187,16 +201,62 @@ export const Particles: React.FC<ParticlesProps> = ({ shapeType, color, handRef 
         }
       }
 
-      // 7. Lerp towards Target
+      // --- Collision Detection (Using Grid) ---
+      // Re-calculate cell for current position (approximate)
+      let gx = Math.floor((cx + GRID_HALF) / GRID_CELL_SIZE);
+      let gy = Math.floor((cy + GRID_HALF) / GRID_CELL_SIZE);
+      let gz = Math.floor((cz + GRID_HALF) / GRID_CELL_SIZE);
+      
+      if (gx < 0) gx = 0; else if (gx >= GRID_RES) gx = GRID_RES - 1;
+      if (gy < 0) gy = 0; else if (gy >= GRID_RES) gy = GRID_RES - 1;
+      if (gz < 0) gz = 0; else if (gz >= GRID_RES) gz = GRID_RES - 1;
+
+      const cellIdx = gx + gy * GRID_RES + gz * GRID_RES * GRID_RES;
+      
+      let neighbor = gridHead[cellIdx];
+      let checks = 0;
+      
+      // Iterate neighbors in the same cell
+      while (neighbor !== -1 && checks < MAX_COLLISION_CHECKS) {
+         if (neighbor !== i) {
+             const n3 = neighbor * 3;
+             const nx = currentPositions[n3];
+             const ny = currentPositions[n3+1];
+             const nz = currentPositions[n3+2];
+             
+             const dx = cx - nx;
+             const dy = cy - ny;
+             const dz = cz - nz;
+             const distSq = dx*dx + dy*dy + dz*dz;
+             
+             const radius = 0.08; // Physical radius
+             const minDist = radius * 2;
+             
+             if (distSq < minDist * minDist && distSq > 0.00001) {
+                 const dist = Math.sqrt(distSq);
+                 const force = (minDist - dist) / dist;
+                 const collisionStrength = 0.25; // Soft collision
+                 
+                 cx += dx * force * collisionStrength;
+                 cy += dy * force * collisionStrength;
+                 cz += dz * force * collisionStrength;
+             }
+         }
+         neighbor = gridNext[neighbor];
+         checks++;
+      }
+
+      // Move towards target (Integration)
       cx += (tx - cx) * smoothing;
       cy += (ty - cy) * smoothing;
       cz += (tz - cz) * smoothing;
 
-      // Update buffers
+      // Write back
       currentPositions[i3] = cx;
       currentPositions[i3 + 1] = cy;
       currentPositions[i3 + 2] = cz;
 
+      // Update Visuals
       positions[i3] = cx;
       positions[i3 + 1] = cy;
       positions[i3 + 2] = cz;
