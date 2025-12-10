@@ -104,10 +104,9 @@ export const useHandTracking = (
              const avgX = (hand1.x + hand2.x) / 2;
              const avgY = (hand1.y + hand2.y) / 2;
              
-             // Removed (1 - avgX) inversion to fix negative camera feed issue.
-             // Now calculating directly: (0 to 1) -> (-1 to 1)
+             // Mirror X axis: (1 - avgX) to flip horizontal direction
              position = {
-                 x: avgX * 2 - 1,
+                 x: (1 - avgX) * 2 - 1,
                  y: -(avgY * 2 - 1)
              };
 
@@ -119,9 +118,9 @@ export const useHandTracking = (
              rightGrip = leftGrip;
              distance = 0.5;
              
-             // Removed (1 - hand.x) inversion
+             // Mirror X axis
              position = {
-                 x: hand.x * 2 - 1,
+                 x: (1 - hand.x) * 2 - 1,
                  y: -(hand.y * 2 - 1)
              };
           }

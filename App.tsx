@@ -77,8 +77,7 @@ const App: React.FC = () => {
           rotateSpeed={0.5}
           enableDamping={true}
           dampingFactor={0.05}
-          autoRotate={!isHandDetected}
-          autoRotateSpeed={0.5} 
+          autoRotate={false} 
           maxDistance={20}
           minDistance={2}
         />

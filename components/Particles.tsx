@@ -53,10 +53,11 @@ export const Particles: React.FC<ParticlesProps> = ({ shapeType, color, handRef 
 
   // Track previous hand position to calculate velocity
   const prevHandPos = useRef<{x: number, y: number, isTracking: boolean}>({ x: 0, y: 0, isTracking: false });
+  
+  // Smoothed position for visual stability
+  const smoothedHandPos = useRef<{x: number, y: number}>({ x: 0, y: 0 });
 
   // Persistent Zoom State
-  // We initialize to 1.0 (default scale). 
-  // This ref holds the value even when hands are removed.
   const persistentZoom = useRef(1.0);
 
   useFrame((state, delta) => {
@@ -65,12 +66,31 @@ export const Particles: React.FC<ParticlesProps> = ({ shapeType, color, handRef 
     const { distance, avgGrip, isDetected, position: handScreenPos } = handRef.current;
     
     // Map normalized hand position (-1 to 1) to world space
-    const handWorldX = handScreenPos.x * (viewport.width / 2);
-    const handWorldY = handScreenPos.y * (viewport.height / 2);
+    const targetHandX = handScreenPos.x * (viewport.width / 2);
+    const targetHandY = handScreenPos.y * (viewport.height / 2);
+
+    // Smooth Hand Position Logic
+    if (isDetected) {
+       if (!prevHandPos.current.isTracking) {
+           // First frame detected: snap to position to avoid flying in
+           smoothedHandPos.current.x = targetHandX;
+           smoothedHandPos.current.y = targetHandY;
+       } else {
+           // Subsequent frames: Lerp for smoothness
+           // Use a fixed lerp factor scaled by delta roughly, or simple coefficient
+           const lerpFactor = Math.min(1.0, 10.0 * delta); // Adjust 10.0 for speed/smoothness tradeoff
+           smoothedHandPos.current.x += (targetHandX - smoothedHandPos.current.x) * lerpFactor;
+           smoothedHandPos.current.y += (targetHandY - smoothedHandPos.current.y) * lerpFactor;
+       }
+    }
+    // If !isDetected, we DO NOT update smoothedHandPos. It stays at the last known position.
+
+    const handWorldX = smoothedHandPos.current.x;
+    const handWorldY = smoothedHandPos.current.y;
 
     let handSpeed = 0;
 
-    // Calculate Hand Velocity
+    // Calculate Hand Velocity based on Smoothed Position
     if (isDetected) {
       if (!prevHandPos.current.isTracking) {
         prevHandPos.current = { x: handWorldX, y: handWorldY, isTracking: true };
@@ -81,47 +101,37 @@ export const Particles: React.FC<ParticlesProps> = ({ shapeType, color, handRef 
         prevHandPos.current = { x: handWorldX, y: handWorldY, isTracking: true };
       }
 
-      // Update Zoom Persistence ONLY when hands are detected
-      // Target scale calculation: 0.4 (min) + distance * 2.6
-      // We start at 0.4 (approx 40% scale) when hands are touching, up to 3.0x when apart
+      // Update Zoom Persistence
       const targetZoom = 0.4 + (distance * 2.6);
-      
-      // Smooth lerp to new zoom level
       persistentZoom.current += (targetZoom - persistentZoom.current) * 0.1;
 
     } else {
       prevHandPos.current.isTracking = false;
-      // When not detected, we DO NOT change persistentZoom.current.
-      // It remains fixed at the last value set by the hands.
     }
 
     // Interaction Parameters
     const expansionFactor = persistentZoom.current;
     
-    // Focus (Grip): Controls the tightness and energy of particles
-    // 0 = Relaxed, 1 = Focused/Tense
+    // Focus (Grip)
     const tension = isDetected ? avgGrip : 0; 
     
     // Physics parameters
     const smoothing = (3.0 + (tension * 12.0)) * delta;
     
     // Increased Impact Settings
-    const repulsionRadius = 6.0; // Increased from 3.0
-    const repulsionStrength = 60.0 * delta; // Increased from 20.0
+    const repulsionRadius = 6.0; 
+    const repulsionStrength = 60.0 * delta; 
     
     const positions = pointsRef.current.geometry.attributes.position.array as Float32Array;
     const time = state.clock.elapsedTime;
 
-    // Dynamic Material Color Update for Focus Effect
+    // Dynamic Material Color
     if (pointsRef.current.material instanceof THREE.PointsMaterial) {
         const baseColor = new THREE.Color(color);
-        const focusColor = new THREE.Color('#ffffff'); // Hot white center
-        // Mix base color with white based on tension
+        const focusColor = new THREE.Color('#ffffff'); 
         baseColor.lerp(focusColor, tension * 0.7);
         pointsRef.current.material.color.lerp(baseColor, 0.1);
         
-        // Dynamic Size
-        // Relaxed: 0.05, Focused: 0.08
         const targetSize = 0.05 + (tension * 0.03);
         pointsRef.current.material.size += (targetSize - pointsRef.current.material.size) * 0.1;
     }
@@ -134,19 +144,19 @@ export const Particles: React.FC<ParticlesProps> = ({ shapeType, color, handRef 
       let ty = targetPositions[i3 + 1];
       let tz = targetPositions[i3 + 2];
 
-      // 2. Apply Expansion (Persistent Zoom)
+      // 2. Apply Expansion
       tx *= expansionFactor;
       ty *= expansionFactor;
       tz *= expansionFactor;
 
-      // 3. Apply Breathing/Idling
+      // 3. Apply Breathing
       const breathingAmplitude = (1.0 - tension) * 0.15; 
       const breathe = Math.sin(time * 1.5 + randomOffsets[i]) * breathingAmplitude;
       tx += tx * breathe;
       ty += ty * breathe;
       tz += tz * breathe;
 
-      // 4. Focus Effect (Grip)
+      // 4. Focus Effect
       if (tension > 0.8) {
          tx += (Math.random() - 0.5) * 0.05;
          ty += (Math.random() - 0.5) * 0.05;
@@ -158,8 +168,12 @@ export const Particles: React.FC<ParticlesProps> = ({ shapeType, color, handRef 
       let cy = currentPositions[i3 + 1];
       let cz = currentPositions[i3 + 2];
 
-      // 6. Repulsion Logic (Hand movement)
-      // Lowered threshold from 3.0 to 1.5 to make it easier to trigger
+      // 6. Repulsion Logic
+      // Note: We use isDetected check here because if hand is gone, we don't want to repel.
+      // However, we use SMOOTHED positions.
+      // If user wants effect to 'persist' exactly as is, we would need to fake velocity.
+      // But typically, if hand stops (or is removed), repulsion should stop.
+      // The user issue "goes to default state" usually refers to camera rotation or zoom resetting.
       if (isDetected && handSpeed > 1.5) { 
         const dx = cx - handWorldX;
         const dy = cy - handWorldY;
@@ -167,7 +181,6 @@ export const Particles: React.FC<ParticlesProps> = ({ shapeType, color, handRef 
         
         if (distSq < repulsionRadius * repulsionRadius) {
             const dist = Math.sqrt(distSq);
-            // Stronger force calculation
             const force = (1.0 - dist / repulsionRadius) * repulsionStrength;
             cx += (dx / dist) * force;
             cy += (dy / dist) * force;
@@ -203,15 +216,14 @@ export const Particles: React.FC<ParticlesProps> = ({ shapeType, color, handRef 
           itemSize={3}
         />
       </bufferGeometry>
-      {/* Updated material with texture and adjusted size */}
       <pointsMaterial
         attach="material"
         map={particleTexture}
-        size={0.05} // Increased size for visibility
+        size={0.05}
         sizeAttenuation={true}
         color={color}
         transparent={true}
-        alphaTest={0.01} // Helps discard fully transparent pixels
+        alphaTest={0.01}
         opacity={0.9}
         blending={THREE.AdditiveBlending}
         depthWrite={false}
