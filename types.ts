@@ -1,6 +1,5 @@
 export enum ShapeType {
   HEART = 'HEART',
-  FLOWER = 'FLOWER',
   SATURN = 'SATURN',
   FIREWORKS = 'FIREWORKS',
 }

@@ -13,7 +13,6 @@ export const THEME_COLORS: ThemeColor[] = [
 
 export const SHAPE_LABELS: Record<ShapeType, string> = {
   [ShapeType.HEART]: 'Heart',
-  [ShapeType.FLOWER]: 'Flower',
   [ShapeType.SATURN]: 'Saturn',
   [ShapeType.FIREWORKS]: 'Fireworks',
 };

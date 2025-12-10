@@ -30,25 +30,6 @@ export const generateShapePositions = (type: ShapeType, count: number): Float32A
         break;
       }
 
-      case ShapeType.FLOWER: {
-        // Phyllotaxis
-        const angle = i * 137.5 * (Math.PI / 180);
-        // Reduced radius multiplier significantly to fit screen
-        // Previous was 0.1, resulting in huge shape
-        const radius = 0.025 * Math.sqrt(i); 
-        x = radius * Math.cos(angle);
-        y = radius * Math.sin(angle);
-        
-        // Cup shape z-depth
-        z = Math.pow(radius, 2) * 0.8 + (Math.random() - 0.5) * 0.5;
-        
-        // Scale and center
-        x *= 3.5;
-        y *= 3.5;
-        z -= 3; 
-        break;
-      }
-
       case ShapeType.SATURN: {
         // Planet + Ring
         const isRing = Math.random() > 0.4; // 60% ring
