@@ -3,13 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>GestureFlow 3D</title>
+    <title>Aether</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
       body { margin: 0; background: #050505; font-family: 'Inter', sans-serif; overflow: hidden; }
       #root { width: 100vw; height: 100vh; }
-      canvas { touch-action: none; }
+      canvas { touch-action: none; outline: none; }
+      /* Hide scrollbar for cleaner UI */
+      ::-webkit-scrollbar { display: none; }
     </style>
   <script type="importmap">
 {

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { ShapeType, HandMetrics } from './types';
@@ -9,9 +9,11 @@ import { useHandTracking } from './hooks/useHandTracking';
 import { SceneEffects } from './components/SceneEffects';
 
 const App: React.FC = () => {
-  const [currentShape, setCurrentShape] = useState<ShapeType>(ShapeType.HEART);
+  // Updated default shape to SATURN
+  const [currentShape, setCurrentShape] = useState<ShapeType>(ShapeType.SATURN);
   const [currentColor, setCurrentColor] = useState<string>(THEME_COLORS[0].hex);
   const [isHandDetected, setIsHandDetected] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(true);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   
@@ -34,7 +36,7 @@ const App: React.FC = () => {
   });
 
   return (
-    <div className="relative w-full h-screen bg-black">
+    <div className="relative w-full h-screen bg-[#050505]">
       {/* Hidden Video Element for MediaPipe */}
       <video
         ref={videoRef}
@@ -53,14 +55,16 @@ const App: React.FC = () => {
         gl={{ 
           preserveDrawingBuffer: true, // Required for trails
           antialias: true,
-          alpha: false
+          alpha: false,
+          toneMappingExposure: 1.2
         }}
       >
         {/* Note: Background color is handled by SceneEffects for trails */}
         <SceneEffects />
         
-        <ambientLight intensity={0.5} />
-        <pointLight position={[10, 10, 10]} intensity={1} />
+        <ambientLight intensity={0.4} />
+        <pointLight position={[10, 10, 10]} intensity={1.5} />
+        <pointLight position={[-10, -10, -10]} intensity={0.5} color={currentColor} />
         
         <Particles 
           shapeType={currentShape} 
@@ -78,7 +82,7 @@ const App: React.FC = () => {
           enableDamping={true}
           dampingFactor={0.05}
           autoRotate={false} 
-          maxDistance={20}
+          maxDistance={25}
           minDistance={2}
         />
       </Canvas>
@@ -91,11 +95,14 @@ const App: React.FC = () => {
         onColorChange={setCurrentColor}
         isCameraReady={isVisionReady}
         handDetected={isHandDetected}
+        showOnboarding={showOnboarding}
+        onDismissOnboarding={() => setShowOnboarding(false)}
       />
       
       {/* Error Toast */}
       {visionError && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-red-500/90 text-white px-4 py-2 rounded-lg text-sm shadow-xl">
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-red-500/10 backdrop-blur-md border border-red-500/20 text-red-200 px-6 py-3 rounded-full text-sm shadow-2xl flex items-center gap-2">
+           <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
           {visionError}
         </div>
       )}
