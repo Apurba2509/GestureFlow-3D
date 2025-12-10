@@ -13,36 +13,39 @@ export const generateShapePositions = (type: ShapeType, count: number): Float32A
         // Parametric Heart
         const t = Math.random() * Math.PI * 2;
         // Distribute slightly randomly for volume
-        const r = Math.random(); 
         // 16sin^3(t)
         const hx = 16 * Math.pow(Math.sin(t), 3);
         // 13cos(t) - 5cos(2t) - 2cos(3t) - cos(4t)
         const hy = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
         
-        // Add volume
-        const scale = 0.15;
+        // Scale adjustment to fit view (approx radius 4)
+        const scale = 0.25; // Increased from 0.15 to fill view better
         x = hx * scale + (Math.random() - 0.5) * 0.5;
         y = hy * scale + (Math.random() - 0.5) * 0.5;
         z = (Math.random() - 0.5) * 2; 
         
         // Normalize roughly to keep camera view consistent
-        x *= 1.5;
-        y *= 1.5;
+        x *= 1.2;
+        y *= 1.2;
         break;
       }
 
       case ShapeType.FLOWER: {
         // Phyllotaxis
         const angle = i * 137.5 * (Math.PI / 180);
-        const radius = 0.1 * Math.sqrt(i);
+        // Reduced radius multiplier significantly to fit screen
+        // Previous was 0.1, resulting in huge shape
+        const radius = 0.025 * Math.sqrt(i); 
         x = radius * Math.cos(angle);
         y = radius * Math.sin(angle);
-        // Cup shape
-        z = Math.pow(radius, 2) * 0.5 + (Math.random() - 0.5) * 0.5;
         
-        x *= 2;
-        y *= 2;
-        z -= 2; // Center it
+        // Cup shape z-depth
+        z = Math.pow(radius, 2) * 0.8 + (Math.random() - 0.5) * 0.5;
+        
+        // Scale and center
+        x *= 3.5;
+        y *= 3.5;
+        z -= 3; 
         break;
       }
 
@@ -52,7 +55,7 @@ export const generateShapePositions = (type: ShapeType, count: number): Float32A
         
         if (isRing) {
           const innerR = 3;
-          const outerR = 5;
+          const outerR = 5.5;
           const ringR = innerR + Math.random() * (outerR - innerR);
           const theta = Math.random() * Math.PI * 2;
           x = ringR * Math.cos(theta);
@@ -60,7 +63,7 @@ export const generateShapePositions = (type: ShapeType, count: number): Float32A
           y = (Math.random() - 0.5) * 0.2; // Thin ring
         } else {
           // Sphere
-          const r = 2;
+          const r = 2.2;
           const u = Math.random();
           const v = Math.random();
           const theta = 2 * Math.PI * u;
@@ -74,7 +77,7 @@ export const generateShapePositions = (type: ShapeType, count: number): Float32A
 
       case ShapeType.FIREWORKS: {
         // Sphere explosion
-        const r = 4 * Math.cbrt(Math.random()); // Uniform sphere distribution
+        const r = 4.5 * Math.cbrt(Math.random()); // Uniform sphere distribution
         const theta = Math.random() * Math.PI * 2;
         const phi = Math.acos(2 * Math.random() - 1);
         

@@ -83,14 +83,16 @@ export const Particles: React.FC<ParticlesProps> = ({ shapeType, color, handRef 
 
       // Update Zoom Persistence ONLY when hands are detected
       // Target scale calculation: 0.4 (min) + distance * 2.6
+      // We start at 0.4 (approx 40% scale) when hands are touching, up to 3.0x when apart
       const targetZoom = 0.4 + (distance * 2.6);
+      
       // Smooth lerp to new zoom level
       persistentZoom.current += (targetZoom - persistentZoom.current) * 0.1;
 
     } else {
       prevHandPos.current.isTracking = false;
       // When not detected, we DO NOT change persistentZoom.current.
-      // It stays at the last calculated value.
+      // It remains fixed at the last value set by the hands.
     }
 
     // Interaction Parameters
@@ -118,7 +120,6 @@ export const Particles: React.FC<ParticlesProps> = ({ shapeType, color, handRef 
         pointsRef.current.material.color.lerp(baseColor, 0.1);
         
         // Dynamic Size
-        // Increased base size to account for soft texture
         // Relaxed: 0.05, Focused: 0.08
         const targetSize = 0.05 + (tension * 0.03);
         pointsRef.current.material.size += (targetSize - pointsRef.current.material.size) * 0.1;
